@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset=utf-8 />
+    <title>US Renewable Energy Power Plants</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.4.0/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
+    <link href='https://fonts.googleapis.com/css?family=Lato' rel='stylesheet' type='text/css'>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: whitesmoke;
+            font-family: Lato, sans-serif;
+            color: #0D0000;
+        }
+        header {
+            padding: 6px 10%;
+        }
+        h1 {
+            display: inline-block;
+            margin-right: 20px;
+            color: #001323;
+        }
+        h2 {
+            display: inline-block;
+            color: #001323;
+        }
+        #map {
+            width: 80%;
+            height: 540px;
+            margin: 10px auto;
+        }
+        footer {
+            padding: 6px 10%;
+            width: 80%;
+        }
+        p {
+            font-size: 1em;
+            color: #001323;
+        }
+
+        /* Search box */
+        #search-container {
+            width: 80%;
+            margin: 8px auto;
+            display: flex;
+            gap: 8px;
+        }
+        #state-search {
+            padding: 6px 10px;
+            font-size: 1em;
+            font-family: Lato, sans-serif;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 220px;
+        }
+        #search-btn {
+            padding: 6px 14px;
+            font-size: 1em;
+            font-family: Lato, sans-serif;
+            background: #001323;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #search-btn:hover { background: #003366; }
+        #reset-btn {
+            padding: 6px 14px;
+            font-size: 1em;
+            font-family: Lato, sans-serif;
+            background: #888;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #reset-btn:hover { background: #555; }
+
+        /* Legend */
+        .legend {
+            background: rgba(255,255,255,0.9);
+            padding: 10px 14px;
+            border-radius: 6px;
+            line-height: 1.8em;
+            font-size: 0.85em;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+        }
+        .legend h4 {
+            margin: 0 0 6px 0;
+            font-size: 0.95em;
+            color: #001323;
+        }
+        .legend-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .legend-circle {
+            border-radius: 50%;
+            display: inline-block;
+            opacity: 0.8;
+            flex-shrink: 0;
+        }
+        .legend-size-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .legend-size-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.75em;
+            color: #333;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>U.S. Renewable Energy Power Plants</h1>
+        <h2>Comparing Biomass, Geothermal, and Solar Generating Capacity</h2>
+    </header>
+
+    <div id="search-container">
+        <input type="text" id="state-search" placeholder="Search by state abbreviation (e.g. CA, TX)" />
+        <button id="search-btn">Search</button>
+        <button id="reset-btn">Reset</button>
+    </div>
+
+    <div id='map'></div>
+
+    <footer>
+        <p>Map authored by Nitin Yagnala</p>
+        <p>This map displays renewable energy power plants across the United States. Circle size represents generating capacity in megawatts (MW). Data sourced from U.S. Energy Information Administration (EIA).</p>
+        <p>I made visual improvement by adding a legend which explained the meaning of circle sizes. I made interactive improvements by having the page zoom to the plant when clicked on. I also added a search by state filter. Lastly, I added the option to toggle on and off the dark base map from the open street base map. These changes make the map easier to navigate and understand the meaning of.</p>
+    </footer>
+
+    <script src="power-plants.js"></script>
+    <script>
+
+var map = L.map('map', {
+  center: [36, -94],
+  zoom: 4,
+});
+
+var darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="http://cartodb.com/attributions">CartoDB</a>',
+  subdomains: 'abcd',
+  maxZoom: 19
+});
+
+var lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 19
+});
+
+darkTiles.addTo(map);
+
+var basemaps = { 'Dark': darkTiles, 'Light': lightTiles };
+L.control.layers(basemaps, null, { position: 'topleft', collapsed: false }).addTo(map);
+
+// Scale bar
+L.control.scale({ position: 'bottomleft' }).addTo(map);
+
+// Radius function scaled for small MW values
+function getRadius(mw) {
+  var r = Math.sqrt(Number(mw)) * 1.2;
+  return Math.max(3, r);
+}
+
+// Popup + zoom on click
+function onEachPlant(feature, layer) {
+  var name = feature.properties.plant_name || "Unknown plant";
+  var cap = Number(feature.properties.capacity_mw || 0).toLocaleString();
+  layer.bindPopup("<b>" + name + "</b><br>Capacity: " + cap + " MW");
+  layer.on('click', function () {
+    map.setView(layer.getLatLng(), 8);
+  });
+}
+
+function makeLayer(fuelKey, color) {
+  return L.geoJson(plants, {
+    filter: function (feature) {
+      return feature.properties.fuel_source && feature.properties.fuel_source[fuelKey];
+    },
+    pointToLayer: function (feature, latlng) {
+      return L.circleMarker(latlng, {
+        color: color,
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 0.6,
+        radius: getRadius(feature.properties.fuel_source[fuelKey])
+      });
+    },
+    onEachFeature: onEachPlant
+  });
+}
+
+var biomassLayer    = makeLayer('Biomass',    '#2ca25f');
+var geothermalLayer = makeLayer('Geothermal', '#e6550d');
+var solarLayer      = makeLayer('Solar',      '#f1c40f');
+
+biomassLayer.addTo(map);
+geothermalLayer.addTo(map);
+solarLayer.addTo(map);
+
+// Layer control with colored labels
+var overlays = {};
+overlays['<span style="color:#2ca25f;font-weight:700;">Biomass</span>']       = biomassLayer;
+overlays['<span style="color:#e6550d;font-weight:700;">Geothermal</span>']    = geothermalLayer;
+overlays['<span style="color:#f1c40f;font-weight:700;">Solar</span>']         = solarLayer;
+
+L.control.layers(null, overlays, { collapsed: false }).addTo(map);
+
+// Legend
+var legend = L.control({ position: 'bottomright' });
+legend.onAdd = function () {
+  var div = L.DomUtil.create('div', 'legend');
+  div.innerHTML = '<h4>Fuel Source</h4>' +
+    '<div class="legend-row"><span class="legend-circle" style="width:14px;height:14px;background:#2ca25f;"></span> Biomass</div>' +
+    '<div class="legend-row"><span class="legend-circle" style="width:14px;height:14px;background:#e6550d;"></span> Geothermal</div>' +
+    '<div class="legend-row"><span class="legend-circle" style="width:14px;height:14px;background:#f1c40f;"></span> Solar</div>' +
+    '<h4 style="margin-top:8px;">Capacity (MW)</h4>' +
+    '<div class="legend-size-row">' +
+      '<div class="legend-size-item"><span class="legend-circle" style="width:8px;height:8px;background:#aaa;"></span>Small</div>' +
+      '<div class="legend-size-item"><span class="legend-circle" style="width:16px;height:16px;background:#aaa;"></span>Medium</div>' +
+      '<div class="legend-size-item"><span class="legend-circle" style="width:26px;height:26px;background:#aaa;"></span>Large</div>' +
+    '</div>';
+  return div;
+};
+legend.addTo(map);
+
+// State search - US state name to approximate center coordinates
+var stateCenters = {
+  'AL': [32.8, -86.8], 'AK': [64.2, -153.4], 'AZ': [34.3, -111.1], 'AR': [34.9, -92.4],
+  'CA': [36.8, -119.4], 'CO': [39.0, -105.5], 'CT': [41.6, -72.7], 'DE': [39.0, -75.5],
+  'FL': [27.8, -81.6], 'GA': [32.2, -83.4], 'HI': [20.3, -156.4], 'ID': [44.4, -114.5],
+  'IL': [40.0, -89.2], 'IN': [39.9, -86.3], 'IA': [42.1, -93.5], 'KS': [38.5, -98.4],
+  'KY': [37.7, -84.9], 'LA': [31.2, -91.8], 'ME': [44.7, -69.4], 'MD': [39.1, -76.8],
+  'MA': [42.2, -71.5], 'MI': [44.3, -85.4], 'MN': [46.4, -93.1], 'MS': [32.7, -89.7],
+  'MO': [38.5, -92.5], 'MT': [47.0, -110.5], 'NE': [41.5, -99.9], 'NV': [39.3, -116.6],
+  'NH': [43.7, -71.6], 'NJ': [40.1, -74.5], 'NM': [34.8, -106.2], 'NY': [42.9, -75.5],
+  'NC': [35.6, -79.8], 'ND': [47.5, -100.5], 'OH': [40.4, -82.8], 'OK': [35.6, -96.9],
+  'OR': [44.1, -120.5], 'PA': [40.6, -77.2], 'RI': [41.7, -71.5], 'SC': [33.9, -80.9],
+  'SD': [44.4, -100.2], 'TN': [35.9, -86.7], 'TX': [31.5, -99.3], 'UT': [39.4, -111.1],
+  'VT': [44.1, -72.7], 'VA': [37.8, -78.2], 'WA': [47.4, -120.5], 'WV': [38.6, -80.6],
+  'WI': [44.3, -89.8], 'WY': [43.0, -107.6]
+};
+
+document.getElementById('search-btn').addEventListener('click', function () {
+  var input = document.getElementById('state-search').value.trim().toUpperCase();
+  if (stateCenters[input]) {
+    map.setView(stateCenters[input], 7);
+  } else {
+    alert('State not found. Please enter a valid 2-letter state abbreviation (e.g. CA, TX).');
+  }
+});
+
+document.getElementById('reset-btn').addEventListener('click', function () {
+  document.getElementById('state-search').value = '';
+  map.setView([36, -94], 4);
+});
+
+// Allow pressing Enter to search
+document.getElementById('state-search').addEventListener('keypress', function (e) {
+  if (e.key === 'Enter') document.getElementById('search-btn').click();
+});
+
+    </script>
+
+</body>
+</html>
